@@ -8,6 +8,9 @@ WORKDIR /app
 COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Ensure the outputs directory exists
+RUN mkdir -p /outputs
+
 # Copy the application code
 COPY src/ ./src
 
