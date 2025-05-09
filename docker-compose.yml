@@ -1,0 +1,10 @@
+version: '3.8'
+
+services:
+  diaspeak:
+    build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./outputs:/app/outputs
+    container_name: diaspeak_app
