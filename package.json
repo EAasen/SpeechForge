@@ -24,5 +24,6 @@
     "build": "react-scripts build",
     "test": "jest --env=jsdom --watchAll=false",
     "eject": "react-scripts eject"
-  }
+  },
+  "version": "1.0.0-beta.1"
 }
