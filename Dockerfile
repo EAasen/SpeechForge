@@ -8,6 +8,9 @@ WORKDIR /app
 COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Install ffmpeg for pydub audio conversion support
+RUN apt-get update && apt-get install -y ffmpeg
+
 # Ensure the outputs directory exists
 RUN mkdir -p /outputs
 
