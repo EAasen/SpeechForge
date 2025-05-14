@@ -1,3 +1,84 @@
+# SpeechForge
+
+## 📦 speechforge@1.0.0-beta.1 — Main Features
+
+- **Flask Backend API**  
+  - Text-to-Speech (TTS) endpoint (sync & async, Celery/Redis)
+  - File upload & batch processing
+  - Catalog management (CRUD, filtering, pagination, CSV export)
+  - Async job dashboard & persistent job history
+  - S3/Cloud file management (list, download, delete)
+  - JWT authentication, rate limiting
+  - Admin endpoints: user/tenant management, audit log, audit logging
+
+- **React Frontend**  
+  - Login/session management (JWT)
+  - TTS request form with advanced options
+  - File upload & batch processing UI
+  - Async job dashboard with polling & results
+  - Catalog table (Material-UI): filtering, batch actions, CSV export, advanced search
+  - Custom audio player with waveform visualization
+  - Toast notifications for all actions
+  - Persistent async job history table
+  - S3 browser: browse, download, delete S3 files
+  - **Admin Panel UI**: user/tenant management, audit log (admin only)
+  - **User Preferences**: language, theme, TTS defaults, notifications
+  - **Notifications**: browser notifications for async job completion
+  - **i18n**: 15+ languages, language switcher, all UI strings translatable
+  - **Accessibility**: ARIA roles/labels, screen reader support
+  - **Automated Testing**: Jest, React Testing Library, ESM/JSX support, mocks
+
+---
+
+## 🚀 Possible Features for Future Versions
+
+- Webhooks for async job completion (user-defined endpoints)
+- OAuth2/social login support
+- Multi-factor authentication (MFA)
+- User profile management (avatar, email, etc.)
+- Advanced catalog analytics and reporting
+- S3 file upload and folder management
+- Audio editing/cropping tools in frontend
+- Real-time job status updates (WebSocket)
+- Admin dashboard analytics (usage, errors, audit trends)
+- More granular permissions/roles (RBAC)
+- Plugin system for custom TTS engines or voices
+- Improved mobile/responsive UI
+- Integration with external TTS providers (Azure, AWS, Google)
+- API rate limit dashboard for users/admins
+- CLI tool improvements (batch, scripting, etc.)
+- More languages and right-to-left (RTL) support
+
+---
+
+## 🤝 Contributing & Issue Reporting
+
+**Found a bug? Have a feature request? Want to contribute?**
+
+1. **Open an Issue:**  
+   - Go to the [GitHub repository](https://github.com/EAasen/SpeechForge)
+   - Click on the “Issues” tab
+   - Click “New Issue” and fill out the template (bug, feature, question, etc.)
+
+2. **Contribute Code:**  
+   - Fork the repository
+   - Create a new branch (`feature/your-feature` or `fix/your-bug`)
+   - Make your changes and add tests if possible
+   - Open a Pull Request (PR) to the `main` branch with a clear description
+
+3. **Backlog & Roadmap:**  
+   - All open issues and feature requests are tracked in the GitHub Issues tab
+   - You can comment, upvote, or discuss features in the issues
+   - Maintainers will triage and label issues for future releases
+
+4. **Code of Conduct:**  
+   - Please be respectful and follow the [Contributor Covenant](https://www.contributor-covenant.org/)
+
+**Docs, install, and usage instructions are in the `README.md`.  
+For questions, open an issue or start a discussion!**
+
+---
+
 # DiaSpeak
 
 DiaSpeak is a self-hosted Dockerized application that uses the [`nari-labs/Dia-1.6B`](https://huggingface.co/nari-labs/Dia-1.6B) text-to-speech model to generate high-quality speech audio from text inputs. The output is saved as organized audio files into a structured library for easy access and use.
