@@ -8,3 +8,14 @@ services:
     volumes:
       - ./outputs:/app/outputs
     container_name: diaspeak_app
+    depends_on:
+      - redis
+    environment:
+      - JWT_SECRET=${JWT_SECRET:-changeme}
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+
+  redis:
+    image: redis:7
+    ports:
+      - "6379:6379"

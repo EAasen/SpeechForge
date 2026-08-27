@@ -96,12 +96,136 @@ DiaSpeak is a self-hosted Dockerized application that uses the [`nari-labs/Dia-1
 
 ---
 
-## 📦 Quickstart
+## 🛠️ Installation & Local Setup
+
+### Prerequisites
+
+- [Docker](https://docs.docker.com/get-docker/) and [Docker Compose](https://docs.docker.com/compose/install/) ≥ v2
+- [Node.js](https://nodejs.org/) ≥ 18 and npm ≥ 9 (frontend only)
+- [Python](https://www.python.org/downloads/) ≥ 3.11 (backend local-only mode)
+- ~5–10 GB free disk space (the Dia-1.6B model is downloaded on first run)
+
+---
+
+### Option A — Docker (Recommended)
+
+This is the easiest way to run the full stack (backend + Redis) with no manual dependency management.
 
 ```bash
-git clone https://github.com/yourusername/diaspeak.git
-cd diaspeak
+git clone https://github.com/EAasen/SpeechForge.git
+cd SpeechForge
 docker-compose up --build
+```
+
+The Flask API will be available at **http://localhost:8000**.
+
+To enable async TTS jobs, start the Celery worker in a second terminal:
+
+```bash
+docker-compose exec diaspeak celery -A src.app.celery_app worker --loglevel=info
+```
+
+Or use the helper script which does both:
+
+```bash
+bash diaspeak-async.sh
+```
+
+**Environment variables (optional):**
+
+| Variable | Default | Description |
+|---|---|---|
+| `JWT_SECRET` | `changeme` | Secret used to sign JWT tokens. **Change in production.** |
+| `CELERY_BROKER_URL` | `redis://redis:6379/0` | Celery broker URL (auto-set by docker-compose) |
+| `CELERY_RESULT_BACKEND` | same as broker | Celery result backend URL |
+| `TTS_BACKEND` | `dia` | Set to `dummy` to skip model download (useful for testing) |
+
+Set them in a `.env` file next to `docker-compose.yml`, for example:
+
+```env
+JWT_SECRET=my-very-secret-key
+```
+
+---
+
+### Option B — Local Python (Backend only)
+
+Use this if you want to run the Flask app directly without Docker.
+
+**1. Install system dependencies**
+
+```bash
+# macOS
+brew install ffmpeg redis
+
+# Ubuntu / Debian
+sudo apt-get update && sudo apt-get install -y ffmpeg redis-server
+```
+
+**2. Install Python packages**
+
+```bash
+pip install -r requirements.txt
+```
+
+**3. Start Redis**
+
+```bash
+redis-server &
+```
+
+**4. Start the Flask API**
+
+```bash
+JWT_SECRET=changeme python src/app.py
+```
+
+The API will be available at **http://localhost:8000**.
+
+**5. Start the Celery worker** (needed for `/speak-async`)
+
+```bash
+celery -A src.app.celery_app worker --loglevel=info
+```
+
+---
+
+### Option C — Frontend (React dev server)
+
+The React frontend talks to the Flask API. Run it alongside Option A or B.
+
+```bash
+npm install
+npm start
+```
+
+The dev server will open at **http://localhost:3000** and proxy API calls to **http://localhost:8000**.
+
+> ℹ️ The `REACT_APP_API_URL` environment variable controls the API base URL (default: `http://localhost:8000`).
+
+---
+
+### Default Credentials
+
+The demo ships with two hardcoded users. Use these to log in via the UI or `/login` endpoint:
+
+| Username | Password | Tenant |
+|---|---|---|
+| `alice` | `password123` | `org1` |
+| `bob` | `password456` | `org2` |
+
+> ⚠️ These are for local development only. Do not use in any public deployment.
+
+---
+
+## 📦 Quickstart (short version)
+
+```bash
+git clone https://github.com/EAasen/SpeechForge.git
+cd SpeechForge
+docker-compose up --build
+# In a second terminal:
+docker-compose exec diaspeak celery -A src.app.celery_app worker --loglevel=info
 ```
 
 ---
@@ -110,49 +234,7 @@ docker-compose up --build
 
 DiaSpeak supports asynchronous TTS job processing using Celery and Redis. This allows you to submit long-running TTS jobs and poll for their status/results without blocking the API.
 
-### Prerequisites
-- Docker Compose (for running Redis and the app)
-- Celery and Redis Python packages (already in requirements.txt)
-
-### Setup Steps
-
-1. **Add Redis to Docker Compose**
-
-Your `docker-compose.yml` should include a Redis service:
-
-```yaml
-services:
-  diaspeak:
-    build: .
-    ports:
-      - "8000:8000"
-    volumes:
-      - ./outputs:/app/outputs
-    container_name: diaspeak_app
-    depends_on:
-      - redis
-
-  redis:
-    image: redis:7
-    ports:
-      - "6379:6379"
-```
-
-2. **Start All Services**
-
-```bash
-docker-compose up --build
-```
-
-3. **Start the Celery Worker**
-
-In a new terminal, run:
-
-```bash
-docker-compose exec diaspeak celery -A src.app.celery_app worker --loglevel=info
-```
-
-4. **Submit Async TTS Jobs**
+### Submit Async TTS Jobs
 
 POST to `/speak-async` with your text and parameters:
 
@@ -164,7 +246,7 @@ curl -X POST http://localhost:8000/speak-async \
 
 You will receive a `job_id` in the response.
 
-5. **Poll Job Status**
+### Poll Job Status
 
 Check job status and result:
 
@@ -173,14 +255,6 @@ curl http://localhost:8000/job/<job_id>
 ```
 
 - Status will be `pending`, `processing`, `complete`, or `error`.
-
-6. **Helper Script**
-
-You can use the provided `diaspeak-async.sh` script to start all services and the Celery worker:
-
-```bash
-bash diaspeak-async.sh
-```
 
 ---
 

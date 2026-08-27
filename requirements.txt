@@ -3,3 +3,7 @@ torch
 soundfile
 flask
 pydub
+celery[redis]
+PyJWT
+boto3
+tqdm
