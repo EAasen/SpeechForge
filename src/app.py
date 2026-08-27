@@ -24,8 +24,8 @@ import zipfile
 from io import BytesIO
 import threading
 
-# Secret key for JWT (in production, use env var)
-JWT_SECRET = 'supersecretkey'
+# Secret key for JWT — set JWT_SECRET env var in production
+JWT_SECRET = os.environ.get('JWT_SECRET', 'changeme')
 JWT_ALGO = 'HS256'
 
 # In-memory user store (for demo)
@@ -125,8 +125,10 @@ def login():
     token = create_token(username, user['tenant'])
     return jsonify({'token': token})
 
-# Celery configuration
-celery_app = Celery('diaspeak', broker='redis://localhost:6379/0', backend='redis://localhost:6379/0')
+# Celery configuration — broker URL can be overridden via CELERY_BROKER_URL env var
+_celery_broker = os.environ.get('CELERY_BROKER_URL', 'redis://localhost:6379/0')
+_celery_backend = os.environ.get('CELERY_RESULT_BACKEND', _celery_broker)
+celery_app = Celery('diaspeak', broker=_celery_broker, backend=_celery_backend)
 
 @celery_app.task(bind=True)
 def tts_task(self, text, params):
