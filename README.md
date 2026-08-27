@@ -207,14 +207,14 @@ The dev server will open at **http://localhost:3000** and proxy API calls to **h
 
 ### Default Credentials
 
-The demo ships with two hardcoded users. Use these to log in via the UI or `/login` endpoint:
+The demo ships with two hardcoded users for **local development only**. Use these to log in via the UI or `/login` endpoint:
 
 | Username | Password | Tenant |
 |---|---|---|
 | `alice` | `password123` | `org1` |
 | `bob` | `password456` | `org2` |
 
-> ⚠️ These are for local development only. Do not use in any public deployment.
+> 🚨 **Security warning:** These credentials and the default `JWT_SECRET` are hardcoded in source code and publicly known. **Never expose this application on a public or shared network without replacing them.** Edit `USERS` in `src/app.py` and set a strong `JWT_SECRET` environment variable before any non-local deployment.
 
 ---
 
