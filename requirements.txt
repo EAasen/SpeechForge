@@ -8,3 +8,4 @@ PyJWT
 boto3
 tqdm
 pytest
+google-cloud-texttospeech

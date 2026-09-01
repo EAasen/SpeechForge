@@ -96,10 +96,56 @@ class DummyTTS(BaseTTS):
         arr = np.zeros(22050, dtype=np.float32)
         return {"audio": arr, "sampling_rate": 22050}
 
+class GoogleTTS(BaseTTS):
+    """Text-to-speech backend backed by the Google Cloud Text-to-Speech API.
+
+    Requires the `google-cloud-texttospeech` package and a valid GCP
+    service account with the Text-to-Speech API enabled. Authentication is
+    handled via the standard `GOOGLE_APPLICATION_CREDENTIALS` environment
+    variable (see README for setup instructions).
+    """
+    def __init__(self):
+        from google.cloud import texttospeech
+        self._texttospeech = texttospeech
+        self.client = texttospeech.TextToSpeechClient()
+
+    def __call__(self, text, **kwargs):
+        texttospeech = self._texttospeech
+
+        voice_name = kwargs.get('voice') or os.environ.get('GOOGLE_TTS_VOICE', 'en-US-Standard-C')
+        language_code = (
+            kwargs.get('language_code')
+            or os.environ.get('GOOGLE_TTS_LANGUAGE_CODE')
+            or '-'.join(voice_name.split('-')[:2])
+        )
+
+        synthesis_input = texttospeech.SynthesisInput(text=text)
+        voice_params = texttospeech.VoiceSelectionParams(
+            language_code=language_code, name=voice_name
+        )
+
+        audio_config_kwargs = {'audio_encoding': texttospeech.AudioEncoding.LINEAR16}
+        speed = kwargs.get('speed')
+        pitch = kwargs.get('pitch')
+        if speed:
+            audio_config_kwargs['speaking_rate'] = float(speed)
+        if pitch is not None:
+            audio_config_kwargs['pitch'] = float(pitch)
+        audio_config = texttospeech.AudioConfig(**audio_config_kwargs)
+
+        response = self.client.synthesize_speech(
+            input=synthesis_input, voice=voice_params, audio_config=audio_config
+        )
+
+        import io
+        audio_array, sampling_rate = sf.read(io.BytesIO(response.audio_content), dtype='float32')
+        return {"audio": audio_array, "sampling_rate": sampling_rate}
+
 # TTS backend selection
 TTS_BACKENDS = {
     'dia': DiaTTS,
     'dummy': DummyTTS,
+    'google': GoogleTTS,
 }
 
 def get_tts_backend():
