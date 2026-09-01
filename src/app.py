@@ -219,7 +219,7 @@ TTS_PROVIDER_REGISTRY = {
     }
 }
 
-VOICE_PROFILES_LOCK = threading.Lock()
+VOICE_PROFILES_LOCK = threading.RLock()
 
 def get_voice_profiles_path():
     if is_test_mode():
@@ -329,7 +329,9 @@ def load_voice_profiles():
     with VOICE_PROFILES_LOCK:
         if not os.path.exists(path):
             seeds = get_seed_voice_profiles()
-            os.makedirs(os.path.dirname(path), exist_ok=True)
+            dir_name = os.path.dirname(path)
+            if dir_name:
+                os.makedirs(dir_name, exist_ok=True)
             with open(path, 'w') as f:
                 json.dump(seeds, f, indent=2)
             return seeds
@@ -342,7 +344,9 @@ def load_voice_profiles():
 def save_voice_profiles(profiles):
     path = get_voice_profiles_path()
     with VOICE_PROFILES_LOCK:
-        os.makedirs(os.path.dirname(path), exist_ok=True)
+        dir_name = os.path.dirname(path)
+        if dir_name:
+            os.makedirs(dir_name, exist_ok=True)
         with open(path, 'w') as f:
             json.dump(profiles, f, indent=2)
 
@@ -365,14 +369,29 @@ def validate_voice_profile(data):
     settings = data.get('settings', {})
     if isinstance(settings, dict):
         rate = settings.get('speaking_rate', 1.0)
-        if rate is not None and not (0.25 <= float(rate) <= 4.0):
-            return False, "speaking_rate must be between 0.25 and 4.0"
+        if rate is not None:
+            try:
+                rate_val = float(rate)
+                if not (0.25 <= rate_val <= 4.0):
+                    return False, "speaking_rate must be between 0.25 and 4.0"
+            except (ValueError, TypeError):
+                return False, "speaking_rate must be a valid number"
         pitch = settings.get('pitch', 0.0)
-        if pitch is not None and not (-20.0 <= float(pitch) <= 20.0):
-            return False, "pitch must be between -20.0 and 20.0"
+        if pitch is not None:
+            try:
+                pitch_val = float(pitch)
+                if not (-20.0 <= pitch_val <= 20.0):
+                    return False, "pitch must be between -20.0 and 20.0"
+            except (ValueError, TypeError):
+                return False, "pitch must be a valid number"
         vol = settings.get('volume', 100.0)
-        if vol is not None and not (0.0 <= float(vol) <= 100.0):
-            return False, "volume must be between 0.0 and 100.0"
+        if vol is not None:
+            try:
+                vol_val = float(vol)
+                if not (0.0 <= vol_val <= 100.0):
+                    return False, "volume must be between 0.0 and 100.0"
+            except (ValueError, TypeError):
+                return False, "volume must be a valid number"
 
     return True, None
 
@@ -414,11 +433,12 @@ def resolve_voice_profile_and_fallback(profile_id=None, user=None, tenant=None, 
             warnings.append(f"Cloud provider '{provider}' requested without fallback.")
 
     profile_settings = matched_profile.get('settings', {})
-    merged_voice = overrides.get('voice') or matched_profile.get('voice_id')
-    merged_speed = overrides.get('speed') or profile_settings.get('speaking_rate')
-    merged_pitch = overrides.get('pitch') or profile_settings.get('pitch')
-    merged_format = (overrides.get('format') or profile_settings.get('output_format', 'wav')).lower()
-    merged_quality = overrides.get('quality') or 'medium'
+    merged_voice = overrides.get('voice') if overrides.get('voice') is not None else matched_profile.get('voice_id')
+    merged_speed = overrides.get('speed') if overrides.get('speed') is not None else profile_settings.get('speaking_rate', 1.0)
+    merged_pitch = overrides.get('pitch') if overrides.get('pitch') is not None else profile_settings.get('pitch', 0.0)
+    raw_format = overrides.get('format') if overrides.get('format') is not None else profile_settings.get('output_format', 'wav')
+    merged_format = (raw_format or 'wav').lower()
+    merged_quality = overrides.get('quality') if overrides.get('quality') is not None else 'medium'
 
     exec_meta = {
         "voice_profile_id": matched_profile.get('id'),
@@ -467,11 +487,18 @@ def save_audio_with_format(audio_array, sampling_rate, output_file, fmt, quality
     Save audio in the requested format using soundfile (wav) or pydub (mp3, ogg).
     Falls back to wav if ffmpeg/pydub conversion fails or is unavailable.
     """
+    output_dir = os.path.abspath(get_output_dir())
+    output_file_abs = os.path.abspath(output_file)
+    if not output_file_abs.startswith(output_dir):
+        output_file_abs = os.path.join(output_dir, os.path.basename(output_file))
+
     if fmt == 'wav':
-        sf.write(output_file, audio_array, sampling_rate)
+        sf.write(output_file_abs, audio_array, sampling_rate)
     else:
+        tmp_wav = os.path.abspath(output_file_abs + '.tmp.wav')
+        if not tmp_wav.startswith(output_dir):
+            tmp_wav = os.path.join(output_dir, 'temp_audio.tmp.wav')
         try:
-            tmp_wav = output_file + '.tmp.wav'
             sf.write(tmp_wav, audio_array, sampling_rate)
             audio = AudioSegment.from_wav(tmp_wav)
             params = {}
@@ -483,10 +510,15 @@ def save_audio_with_format(audio_array, sampling_rate, output_file, fmt, quality
                 params['bitrate'] = '192k'
             else:
                 params['bitrate'] = '128k'
-            audio.export(output_file, format=fmt, **params)
-            os.remove(tmp_wav)
+            audio.export(output_file_abs, format=fmt, **params)
         except Exception:
-            sf.write(output_file, audio_array, sampling_rate)
+            sf.write(output_file_abs, audio_array, sampling_rate)
+        finally:
+            if os.path.exists(tmp_wav) and os.path.abspath(tmp_wav).startswith(output_dir):
+                try:
+                    os.remove(tmp_wav)
+                except OSError:
+                    pass
 
 def log_metadata(metadata):
     """
@@ -691,7 +723,10 @@ def update_voice_profile(profile_id):
         return jsonify({"error": "Voice profile not found"}), 404
 
     target = profiles[target_index]
-    if target.get('user') not in (user, 'system') and target.get('tenant') not in (tenant, 'global'):
+    if target.get('user') == 'system':
+        return jsonify({"error": "Cannot update system default profiles"}), 400
+
+    if target.get('user') != user and target.get('tenant') != tenant:
         return jsonify({"error": "Unauthorized access to profile"}), 403
 
     merged = dict(target)

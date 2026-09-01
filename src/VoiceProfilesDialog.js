@@ -125,7 +125,7 @@ function VoiceProfilesDialog({ open, onClose, token, apiUrl, onSelectProfile, cu
         setProfiles(Array.isArray(data) ? data : (data.profiles || []));
       }
     } catch (e) {
-      console.log('fetchProfiles err:', e);
+      console.error('fetchProfiles err:', e);
       setError(t('Failed to load voice profiles'));
     }
   };

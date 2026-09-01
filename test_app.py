@@ -8,9 +8,16 @@ from src.app import app
 
 
 @pytest.fixture(autouse=True)
-def reset_rate_limit():
-    from src.app import RATE_LIMIT
+def reset_test_state():
+    from src.app import RATE_LIMIT, get_voice_profiles_path, get_seed_voice_profiles, save_voice_profiles
     RATE_LIMIT.clear()
+    path = get_voice_profiles_path()
+    if os.path.exists(path):
+        try:
+            os.remove(path)
+        except OSError:
+            pass
+    save_voice_profiles(get_seed_voice_profiles())
 
 def get_jwt_token(client, username, password):
     resp = client.post('/login', json={'username': username, 'password': password})
