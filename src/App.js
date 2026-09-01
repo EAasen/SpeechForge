@@ -21,6 +21,7 @@ import { useTranslation, initReactI18next } from 'react-i18next';
 import i18n from 'i18next';
 import AdminPanel from './AdminPanel'; // New admin panel component
 import PreferencesDialog from './PreferencesDialog';
+import VoiceProfilesDialog from './VoiceProfilesDialog';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
 
@@ -315,6 +316,8 @@ function App() {
   const [format, setFormat] = useState('wav');
   const [quality, setQuality] = useState('medium');
   const [voice, setVoice] = useState('default');
+  const [voiceProfileId, setVoiceProfileId] = useState('');
+  const [showVoiceProfilesDialog, setShowVoiceProfilesDialog] = useState(false);
   const [speed, setSpeed] = useState('');
   const [pitch, setPitch] = useState('');
   const [tone, setTone] = useState('');
@@ -412,7 +415,7 @@ function App() {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
         },
-        body: JSON.stringify({ text, format, quality, voice, speed, pitch, tone, prompt })
+        body: JSON.stringify({ text, format, quality, voice, speed, pitch, tone, prompt, voice_profile_id: voiceProfileId })
       });
       setAudioUrl(data.url);
       setMessage(t('Audio generated!'));
@@ -865,6 +868,7 @@ function App() {
               <IconButton color="inherit" onClick={logout} aria-label={t('Logout')} tabIndex={0}><LogoutIcon /></IconButton>
             </>
           )}
+          <Button color="inherit" onClick={() => setShowVoiceProfilesDialog(true)} sx={{ ml: 2 }} aria-label={t('Voice Profiles')} tabIndex={0}>{t('Voice Profiles')}</Button>
           <Button color="inherit" onClick={() => setShowPrefs(true)} sx={{ ml: 2 }} aria-label={t('Preferences')} tabIndex={0}>{t('Preferences')}</Button>
         </Toolbar>
       </AppBar>
@@ -945,6 +949,9 @@ function App() {
                       <MenuItem value="high">High</MenuItem>
                     </Select>
                   </FormControl>
+                </Grid>
+                <Grid item xs={12} sm={6} md={4}>
+                  <TextField label={t('Voice Profile ID')} value={voiceProfileId} onChange={e => setVoiceProfileId(e.target.value)} placeholder="e.g. default_dia, azure_news" fullWidth sx={{ mb: 2 }} />
                 </Grid>
                 <Grid item xs={12} sm={6} md={4}>
                   <TextField label={t('Voice')} value={voice} onChange={e => setVoice(e.target.value)} fullWidth sx={{ mb: 2 }} />
@@ -1211,6 +1218,14 @@ function App() {
         </Box>
       )}
       {navPage === 'admin' && isAdmin && <AdminPanel />}
+      <VoiceProfilesDialog
+        open={showVoiceProfilesDialog}
+        onClose={() => setShowVoiceProfilesDialog(false)}
+        token={token}
+        apiUrl={API_URL}
+        currentProfileId={voiceProfileId}
+        onSelectProfile={(id) => setVoiceProfileId(id)}
+      />
       <PreferencesDialog open={showPrefs} onClose={() => setShowPrefs(false)} onSave={handleSavePrefs} prefs={prefs} />
       <Snackbar open={showMsg} autoHideDuration={4000} onClose={() => setShowMsg(false)}>
         <Alert onClose={() => setShowMsg(false)} severity={messageType} sx={{ width: '100%' }}>
