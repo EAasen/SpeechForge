@@ -281,6 +281,7 @@ pytest test_app.py
 For the React frontend tests:
 
 ```bash
+npm install
 npm test
 ```
 
