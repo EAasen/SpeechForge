@@ -111,9 +111,12 @@ DiaSpeak is a self-hosted Dockerized application that uses the [`nari-labs/Dia-1
 
 This is the easiest way to run the full stack (backend + Redis) with no manual dependency management.
 
+Copy `.env.example` to `.env` and edit as needed.
+
 ```bash
 git clone https://github.com/EAasen/SpeechForge.git
 cd SpeechForge
+cp .env.example .env
 docker-compose up --build
 ```
 
