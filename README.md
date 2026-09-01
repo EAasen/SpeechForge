@@ -30,6 +30,15 @@
 
 ---
 
+## 🛣️ Near-term / v1.0 Roadmap
+
+Planned for the stable v1.0 release:
+
+- More granular permissions/roles (RBAC)
+- Real-time job status updates (WebSocket)
+
+---
+
 ## 🚀 Possible Features for Future Versions
 
 - Webhooks for async job completion (user-defined endpoints)
@@ -39,9 +48,7 @@
 - Advanced catalog analytics and reporting
 - S3 file upload and folder management
 - Audio editing/cropping tools in frontend
-- Real-time job status updates (WebSocket)
 - Admin dashboard analytics (usage, errors, audit trends)
-- More granular permissions/roles (RBAC)
 - Plugin system for custom TTS engines or voices
 - Improved mobile/responsive UI
 - Integration with external TTS providers (Azure, AWS, Google)
