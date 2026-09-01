@@ -148,7 +148,7 @@ bash diaspeak-async.sh
 | `JWT_SECRET` | `changeme` | Secret used to sign JWT tokens. **Change in production.** |
 | `CELERY_BROKER_URL` | `redis://redis:6379/0` | Celery broker URL (auto-set by docker-compose) |
 | `CELERY_RESULT_BACKEND` | same as broker | Celery result backend URL |
-| `TTS_BACKEND` | `dia` | Set to `dummy` to skip model download (useful for testing) |
+| `TTS_BACKEND` | `dia` | Set to `dummy` to skip model download (useful for testing), or `google` to use Google Cloud Text-to-Speech (see [Using Google Cloud Text-to-Speech](#-using-google-cloud-text-to-speech) below) |
 
 Set them in a `.env` file next to `docker-compose.yml`, for example:
 
@@ -294,6 +294,103 @@ For the React frontend tests:
 npm install
 npm test
 ```
+
+---
+
+## ☁️ Using Google Cloud Text-to-Speech
+
+SpeechForge can generate speech using [Google Cloud Text-to-Speech](https://cloud.google.com/text-to-speech) instead of the local Dia-1.6B model. This is the first supported external TTS provider, and is useful if you want access to Google's WaveNet/Neural2/Studio voices, additional languages, or don't want to download the ~5–10 GB local model.
+
+### 1. Prerequisites
+
+- A [Google Cloud](https://console.cloud.google.com/) account with billing enabled (Text-to-Speech has a free monthly quota, but a billing account is required to enable the API).
+- The [`google-cloud-texttospeech`](https://pypi.org/project/google-cloud-texttospeech/) Python package, which is already listed in `requirements.txt`. Install/update dependencies with:
+  ```bash
+  pip install -r requirements.txt
+  ```
+
+### 2. Enable the Text-to-Speech API
+
+1. Go to the [Google Cloud Console](https://console.cloud.google.com/) and create a new project (or select an existing one).
+2. Open **APIs & Services → Library**, search for **"Cloud Text-to-Speech API"**, and click **Enable**.
+
+### 3. Create a service account and credentials
+
+1. In the Cloud Console, go to **IAM & Admin → Service Accounts** and click **Create Service Account**.
+2. Give it a name (e.g. `speechforge-tts`) and grant it the **Cloud Text-to-Speech User** role (or `roles/cloudtts.user`). No project-wide Editor/Owner role is needed.
+3. Open the new service account, go to the **Keys** tab, click **Add Key → Create new key**, choose **JSON**, and download the key file.
+4. Store the downloaded JSON file somewhere safe **outside of version control** (it must never be committed to the repo).
+
+### 4. Configure environment variables
+
+Set the following variables (in your `.env` file or shell environment):
+
+| Variable | Required | Description |
+|---|---|---|
+| `TTS_BACKEND` | Yes | Set to `google` to route `/speak`, `/speak-async`, and `/speak-file` through Google Cloud TTS. |
+| `GOOGLE_APPLICATION_CREDENTIALS` | Yes | Absolute path to the service account JSON key file downloaded above. This is the [standard variable](https://cloud.google.com/docs/authentication/application-default-credentials) used by all Google Cloud client libraries. |
+| `GOOGLE_TTS_VOICE` | No | Default voice name to use when a request doesn't specify one (default: `en-US-Standard-C`). |
+| `GOOGLE_TTS_LANGUAGE_CODE` | No | Default language/locale code (default: derived from the voice name, e.g. `en-US`). |
+
+Example `.env` snippet:
+
+```env
+TTS_BACKEND=google
+GOOGLE_APPLICATION_CREDENTIALS=/secrets/speechforge-gcp-key.json
+GOOGLE_TTS_VOICE=en-US-Neural2-F
+GOOGLE_TTS_LANGUAGE_CODE=en-US
+```
+
+> 🚨 If running in Docker, mount the credentials file into the container (e.g. `-v /secrets/speechforge-gcp-key.json:/secrets/key.json:ro`) and set `GOOGLE_APPLICATION_CREDENTIALS=/secrets/key.json` accordingly.
+
+### 5. Selecting and using voices
+
+Browse the full, up-to-date list of available voices, languages, and voice types (Standard, WaveNet, Neural2, Studio, etc.) at the [Google Cloud TTS voices page](https://cloud.google.com/text-to-speech/docs/voices). Pass the desired voice per-request using the existing `voice` parameter, e.g.:
+
+```bash
+curl -X POST http://localhost:8000/speak \
+  -H 'Authorization: ******' \
+  -H 'Content-Type: application/json' \
+  -d '{"text": "Hello from the cloud!", "voice": "en-US-Neural2-F", "speed": 1.0, "pitch": 0}'
+```
+
+- `voice` should match a Google voice name exactly (e.g. `en-GB-Wavenet-A`, `fr-FR-Neural2-B`).
+- `speed` maps to Google's `speakingRate` (`0.25`–`4.0`, default `1.0`).
+- `pitch` maps to Google's `pitch` (`-20.0`–`20.0` semitones, default `0`).
+- If `voice` is omitted, the `GOOGLE_TTS_VOICE` environment variable (or built-in default) is used.
+
+### 6. Limitations and capabilities
+
+- Requires network access and a valid GCP billing account; usage beyond the free tier incurs [Google Cloud charges](https://cloud.google.com/text-to-speech/pricing).
+- Higher-quality voice tiers (WaveNet, Neural2, Studio) cost more per character than Standard voices and may have region availability restrictions.
+- Google enforces a maximum input length per request (5,000 bytes); SpeechForge's existing text-chunking logic (`max_chars`) already splits long text into smaller requests, so long inputs are still supported.
+- Audio is requested as 16-bit linear PCM (`LINEAR16`) and converted the same way as other backends, so `format`/`quality` options in `/speak` still apply after generation.
+- Unlike the local Dia backend, no local GPU/model download is required, but each request depends on external API latency and availability.
+
+### 7. End-to-end verification
+
+1. Set `TTS_BACKEND=google` and `GOOGLE_APPLICATION_CREDENTIALS` as described above.
+2. Start the API: `python src/app.py` (or `docker-compose up --build` with the variables set in `.env`).
+3. Log in and request speech:
+   ```bash
+   TOKEN=$(curl -s -X POST http://localhost:8000/login -H 'Content-Type: application/json' \
+     -d '{"username": "alice", "password": "password123"}' | python -c "import sys, json; print(json.load(sys.stdin)['token'])")
+
+   curl -X POST http://localhost:8000/speak \
+     -H "Authorization: ******" \
+     -H 'Content-Type: application/json' \
+     -d '{"text": "Testing Google Cloud text to speech.", "voice": "en-US-Neural2-F"}' \
+     --output test.json
+   ```
+4. Confirm the response contains a `file_path`/download URL and that the referenced file in `outputs/` is a valid, playable audio file.
+
+### 8. Troubleshooting
+
+- **`DefaultCredentialsError` / "Could not automatically determine credentials"**: `GOOGLE_APPLICATION_CREDENTIALS` is unset, points to a missing file, or the file isn't readable by the process/container user. Double-check the path and file permissions.
+- **`PermissionDenied` (403)**: The service account is missing the Text-to-Speech role, or the Cloud Text-to-Speech API isn't enabled on the project. Re-check steps 2 and 3 above.
+- **`InvalidArgument` mentioning voice/language**: The `voice` name doesn't exist or doesn't match `language_code`. Verify the exact voice name on the [voices page](https://cloud.google.com/text-to-speech/docs/voices).
+- **Requests hang or time out**: Check outbound network/firewall access to `texttospeech.googleapis.com`, and confirm billing is enabled on the GCP project (APIs return errors, not silent failures, once billing is set up correctly).
+- **Quota exceeded errors**: Check usage/quotas under **APIs & Services → Text-to-Speech API → Quotas** in the Cloud Console.
 
 ---
 

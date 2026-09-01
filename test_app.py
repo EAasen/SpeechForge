@@ -75,3 +75,36 @@ def test_rate_limit(client):
         client.post('/speak', json={'text': 'Rate limit test'}, headers={'Authorization': f'Bearer {token}'})
     resp = client.post('/speak', json={'text': 'Rate limit test'}, headers={'Authorization': f'Bearer {token}'})
     assert resp.status_code == 429
+
+
+def test_google_tts_backend_registered():
+    from src.app import TTS_BACKENDS, GoogleTTS
+    assert TTS_BACKENDS['google'] is GoogleTTS
+
+
+def test_google_tts_generates_audio():
+    import io
+    import numpy as np
+    import soundfile as sf
+    from src.app import GoogleTTS
+
+    # Build a small valid WAV payload to stand in for Google's LINEAR16 response.
+    wav_buffer = io.BytesIO()
+    sf.write(wav_buffer, np.zeros(100, dtype=np.float32), 16000, format='WAV')
+    wav_bytes = wav_buffer.getvalue()
+
+    class FakeResponse:
+        audio_content = wav_bytes
+
+    class FakeClient:
+        def synthesize_speech(self, input, voice, audio_config):
+            return FakeResponse()
+
+    tts = GoogleTTS.__new__(GoogleTTS)
+    from google.cloud import texttospeech
+    tts._texttospeech = texttospeech
+    tts.client = FakeClient()
+
+    result = tts("Hello world", voice="en-US-Neural2-F", speed=1.0, pitch=0)
+    assert result["sampling_rate"] == 16000
+    assert len(result["audio"]) == 100
