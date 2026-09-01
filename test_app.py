@@ -67,7 +67,8 @@ def test_catalog_filtering(client):
     resp = client.get('/catalog?user=alice')
     assert resp.status_code == 200
     catalog = resp.get_json()
-    assert any(row['user'] == 'alice' for row in catalog)
+    items = catalog['results'] if isinstance(catalog, dict) and 'results' in catalog else catalog
+    assert any(row['user'] == 'alice' for row in items)
 
 def test_rate_limit(client):
     token = get_jwt_token(client, 'bob', 'password456')

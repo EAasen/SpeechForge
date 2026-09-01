@@ -14,7 +14,7 @@ module.exports = {
     '^wavesurfer.js$': '<rootDir>/src/__mocks__/wavesurfer.js',
   },
   // Add ESM/JSX support for React and modern libraries
-  extensionsToTreatAsEsm: ['.js', '.jsx'],
+  extensionsToTreatAsEsm: ['.jsx'],
   testPathIgnorePatterns: ['/node_modules/', '/__pycache__/'],
   collectCoverageFrom: ['src/**/*.{js,jsx}', '!src/__mocks__/*'],
   verbose: true,
