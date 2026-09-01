@@ -66,6 +66,7 @@ def jwt_required(f):
 
 # Initialize Flask app
 app = Flask(__name__)
+os.makedirs('outputs', exist_ok=True)
 
 # Detect test mode robustly (pytest, unittest, Flask test, or TESTING env)
 def is_test_mode():
