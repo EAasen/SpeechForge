@@ -115,6 +115,346 @@ def create_token(user, tenant):
     payload = {'user': user, 'tenant': tenant, 'exp': datetime.utcnow() + timedelta(hours=12)}
     return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGO)
 
+# TTS Provider Capability Registry
+TTS_PROVIDER_REGISTRY = {
+    "local_dia": {
+        "id": "local_dia",
+        "name": "Local Dia (On-Device)",
+        "type": "local",
+        "supports_offline": True,
+        "supports_ssml": False,
+        "supported_formats": ["wav", "mp3", "ogg"],
+        "sample_rates": [22050, 44100],
+        "languages": [
+            {"code": "en-US", "name": "English (US)"},
+            {"code": "es-ES", "name": "Spanish"}
+        ],
+        "voices": [
+            {"id": "dia-default", "name": "Dia Voice 1 (Default)", "gender": "neutral", "styles": []},
+            {"id": "dia-female", "name": "Dia Voice 2 (Female)", "gender": "female", "styles": []},
+            {"id": "dia-male", "name": "Dia Voice 3 (Male)", "gender": "male", "styles": []}
+        ],
+        "custom_params": {
+            "temperature": {"type": "float", "min": 0.1, "max": 2.0, "default": 0.7},
+            "guidance_scale": {"type": "float", "min": 1.0, "max": 10.0, "default": 3.0}
+        }
+    },
+    "dummy": {
+        "id": "dummy",
+        "name": "Dummy Backend (Testing)",
+        "type": "local",
+        "supports_offline": True,
+        "supports_ssml": False,
+        "supported_formats": ["wav", "mp3", "ogg"],
+        "sample_rates": [22050],
+        "languages": [{"code": "en-US", "name": "English (US)"}],
+        "voices": [{"id": "default", "name": "Dummy Default Voice", "gender": "neutral", "styles": []}],
+        "custom_params": {}
+    },
+    "azure": {
+        "id": "azure",
+        "name": "Azure Cognitive Services Speech",
+        "type": "cloud",
+        "supports_offline": False,
+        "supports_ssml": True,
+        "supported_formats": ["wav", "mp3", "ogg", "pcm"],
+        "sample_rates": [16000, 24000, 44100, 48000],
+        "languages": [
+            {"code": "en-US", "name": "English (US)"},
+            {"code": "fr-FR", "name": "French"},
+            {"code": "de-DE", "name": "German"},
+            {"code": "es-ES", "name": "Spanish"}
+        ],
+        "voices": [
+            {"id": "en-US-JennyNeural", "name": "Jenny (Neural)", "gender": "female", "styles": ["cheerful", "sad", "empathetic", "chat", "newscast"]},
+            {"id": "en-US-GuyNeural", "name": "Guy (Neural)", "gender": "male", "styles": ["newscast", "angry", "cheerful"]}
+        ],
+        "custom_params": {
+            "style": {"type": "string"},
+            "style_degree": {"type": "float", "min": 0.0, "max": 2.0, "default": 1.0},
+            "use_ssml": {"type": "boolean", "default": False}
+        }
+    },
+    "aws": {
+        "id": "aws",
+        "name": "AWS Polly",
+        "type": "cloud",
+        "supports_offline": False,
+        "supports_ssml": True,
+        "supported_formats": ["mp3", "ogg", "pcm", "wav"],
+        "sample_rates": [8000, 16000, 22050, 24000],
+        "languages": [
+            {"code": "en-US", "name": "English (US)"},
+            {"code": "es-US", "name": "Spanish (US)"}
+        ],
+        "voices": [
+            {"id": "Joanna", "name": "Joanna", "gender": "female", "engines": ["standard", "neural"]},
+            {"id": "Matthew", "name": "Matthew", "gender": "male", "engines": ["standard", "neural", "generative"]}
+        ],
+        "custom_params": {
+            "engine": {"type": "enum", "options": ["standard", "neural", "generative"], "default": "neural"},
+            "lexicon_names": {"type": "array_string"}
+        }
+    },
+    "google": {
+        "id": "google",
+        "name": "Google Cloud Text-to-Speech",
+        "type": "cloud",
+        "supports_offline": False,
+        "supports_ssml": True,
+        "supported_formats": ["mp3", "wav", "ogg"],
+        "sample_rates": [16000, 24000, 48000],
+        "languages": [
+            {"code": "en-US", "name": "English (US)"},
+            {"code": "ja-JP", "name": "Japanese"}
+        ],
+        "voices": [
+            {"id": "en-US-Neural2-F", "name": "Neural2 Female F", "gender": "female"},
+            {"id": "en-US-Studio-O", "name": "Studio Male O", "gender": "male"}
+        ],
+        "custom_params": {
+            "ssml_gender": {"type": "string"},
+            "effects_profile_id": {"type": "array_string"}
+        }
+    }
+}
+
+VOICE_PROFILES_LOCK = threading.RLock()
+
+def get_voice_profiles_path():
+    if is_test_mode():
+        import tempfile
+        return os.path.join(tempfile.gettempdir(), 'voice_profiles.json')
+    return os.path.join('outputs', 'voice_profiles.json')
+
+def get_seed_voice_profiles():
+    now_iso = datetime.utcnow().isoformat() + 'Z'
+    local_provider = 'dummy' if is_test_mode() else 'local_dia'
+    default_voice = 'default' if is_test_mode() else 'dia-default'
+    return [
+        {
+            "id": "default-local-dia",
+            "name": "Default On-Device Voice",
+            "description": "Local on-device TTS voice profile",
+            "provider": local_provider,
+            "voice_id": default_voice,
+            "language": "en-US",
+            "gender": "neutral",
+            "is_default": True,
+            "user": "system",
+            "tenant": "global",
+            "settings": {
+                "speaking_rate": 1.0,
+                "pitch": 0.0,
+                "volume": 100.0,
+                "output_format": "wav",
+                "sample_rate": 22050
+            },
+            "provider_params": {
+                "temperature": 0.7,
+                "guidance_scale": 3.0
+            },
+            "fallback_config": {
+                "fallback_profile_id": None,
+                "allow_provider_fallback": True,
+                "fallback_provider": local_provider
+            },
+            "created_at": now_iso,
+            "updated_at": now_iso
+        },
+        {
+            "id": "default-azure-jenny",
+            "name": "Azure Jenny Neural",
+            "description": "Cloud Azure Speech with Jenny Neural voice",
+            "provider": "azure",
+            "voice_id": "en-US-JennyNeural",
+            "language": "en-US",
+            "gender": "female",
+            "is_default": False,
+            "user": "system",
+            "tenant": "global",
+            "settings": {
+                "speaking_rate": 1.0,
+                "pitch": 0.0,
+                "volume": 100.0,
+                "output_format": "mp3",
+                "sample_rate": 24000
+            },
+            "provider_params": {
+                "style": "cheerful",
+                "style_degree": 1.0,
+                "use_ssml": False
+            },
+            "fallback_config": {
+                "fallback_profile_id": "default-local-dia",
+                "allow_provider_fallback": True,
+                "fallback_provider": local_provider
+            },
+            "created_at": now_iso,
+            "updated_at": now_iso
+        },
+        {
+            "id": "default-aws-joanna",
+            "name": "AWS Polly Joanna",
+            "description": "Cloud AWS Polly Neural voice profile",
+            "provider": "aws",
+            "voice_id": "Joanna",
+            "language": "en-US",
+            "gender": "female",
+            "is_default": False,
+            "user": "system",
+            "tenant": "global",
+            "settings": {
+                "speaking_rate": 1.0,
+                "pitch": 0.0,
+                "volume": 100.0,
+                "output_format": "mp3",
+                "sample_rate": 22050
+            },
+            "provider_params": {
+                "engine": "neural"
+            },
+            "fallback_config": {
+                "fallback_profile_id": "default-local-dia",
+                "allow_provider_fallback": True,
+                "fallback_provider": local_provider
+            },
+            "created_at": now_iso,
+            "updated_at": now_iso
+        }
+    ]
+
+def load_voice_profiles():
+    path = get_voice_profiles_path()
+    with VOICE_PROFILES_LOCK:
+        if not os.path.exists(path):
+            seeds = get_seed_voice_profiles()
+            dir_name = os.path.dirname(path)
+            if dir_name:
+                os.makedirs(dir_name, exist_ok=True)
+            with open(path, 'w') as f:
+                json.dump(seeds, f, indent=2)
+            return seeds
+        try:
+            with open(path, 'r') as f:
+                return json.load(f)
+        except Exception:
+            return get_seed_voice_profiles()
+
+def save_voice_profiles(profiles):
+    path = get_voice_profiles_path()
+    with VOICE_PROFILES_LOCK:
+        dir_name = os.path.dirname(path)
+        if dir_name:
+            os.makedirs(dir_name, exist_ok=True)
+        with open(path, 'w') as f:
+            json.dump(profiles, f, indent=2)
+
+def validate_voice_profile(data):
+    if not isinstance(data, dict):
+        return False, "Profile data must be an object"
+    name = data.get('name')
+    if not name or not isinstance(name, str) or len(name.strip()) == 0:
+        return False, "Profile name is required and cannot be empty"
+    provider = data.get('provider')
+    if not provider or provider not in TTS_PROVIDER_REGISTRY:
+        return False, f"Invalid provider '{provider}'. Must be one of: {list(TTS_PROVIDER_REGISTRY.keys())}"
+    voice_id = data.get('voice_id')
+    if not voice_id or not isinstance(voice_id, str):
+        return False, "voice_id is required"
+    language = data.get('language')
+    if not language or not isinstance(language, str):
+        return False, "language is required"
+    
+    settings = data.get('settings', {})
+    if isinstance(settings, dict):
+        rate = settings.get('speaking_rate', 1.0)
+        if rate is not None:
+            try:
+                rate_val = float(rate)
+                if not (0.25 <= rate_val <= 4.0):
+                    return False, "speaking_rate must be between 0.25 and 4.0"
+            except (ValueError, TypeError):
+                return False, "speaking_rate must be a valid number"
+        pitch = settings.get('pitch', 0.0)
+        if pitch is not None:
+            try:
+                pitch_val = float(pitch)
+                if not (-20.0 <= pitch_val <= 20.0):
+                    return False, "pitch must be between -20.0 and 20.0"
+            except (ValueError, TypeError):
+                return False, "pitch must be a valid number"
+        vol = settings.get('volume', 100.0)
+        if vol is not None:
+            try:
+                vol_val = float(vol)
+                if not (0.0 <= vol_val <= 100.0):
+                    return False, "volume must be between 0.0 and 100.0"
+            except (ValueError, TypeError):
+                return False, "volume must be a valid number"
+
+    return True, None
+
+def resolve_voice_profile_and_fallback(profile_id=None, user=None, tenant=None, overrides=None):
+    profiles = load_voice_profiles()
+    overrides = overrides or {}
+    matched_profile = None
+
+    if profile_id:
+        for p in profiles:
+            if p.get('id') == profile_id:
+                matched_profile = p
+                break
+
+    if not matched_profile:
+        for p in profiles:
+            if p.get('is_default') and (p.get('user') == user or p.get('tenant') == tenant or p.get('tenant') == 'global'):
+                matched_profile = p
+                break
+        if not matched_profile and profiles:
+            matched_profile = profiles[0]
+
+    if not matched_profile:
+        matched_profile = get_seed_voice_profiles()[0]
+
+    provider = matched_profile.get('provider', 'local_dia')
+    fallback_applied = False
+    warnings = []
+
+    is_cloud = TTS_PROVIDER_REGISTRY.get(provider, {}).get('type') == 'cloud'
+    if is_cloud and (is_test_mode() or os.environ.get('FORCE_PROVIDER_FALLBACK') == '1'):
+        fb_config = matched_profile.get('fallback_config', {})
+        if fb_config.get('allow_provider_fallback', True):
+            fallback_provider = fb_config.get('fallback_provider', 'dummy' if is_test_mode() else 'local_dia')
+            warnings.append(f"Cloud provider '{provider}' fallback triggered. Executing with '{fallback_provider}'.")
+            provider = fallback_provider
+            fallback_applied = True
+        else:
+            warnings.append(f"Cloud provider '{provider}' requested without fallback.")
+
+    profile_settings = matched_profile.get('settings', {})
+    merged_voice = overrides.get('voice') if overrides.get('voice') is not None else matched_profile.get('voice_id')
+    merged_speed = overrides.get('speed') if overrides.get('speed') is not None else profile_settings.get('speaking_rate', 1.0)
+    merged_pitch = overrides.get('pitch') if overrides.get('pitch') is not None else profile_settings.get('pitch', 0.0)
+    raw_format = overrides.get('format') if overrides.get('format') is not None else profile_settings.get('output_format', 'wav')
+    merged_format = (raw_format or 'wav').lower()
+    merged_quality = overrides.get('quality') if overrides.get('quality') is not None else 'medium'
+
+    exec_meta = {
+        "voice_profile_id": matched_profile.get('id'),
+        "voice_profile_name": matched_profile.get('name'),
+        "provider_used": provider,
+        "fallback_applied": fallback_applied,
+        "warnings": warnings,
+        "merged_voice": merged_voice,
+        "merged_speed": merged_speed,
+        "merged_pitch": merged_pitch,
+        "merged_format": merged_format,
+        "merged_quality": merged_quality
+    }
+
+    return matched_profile, exec_meta
+
 @app.route('/login', methods=['POST'])
 def login():
     data = request.get_json()
@@ -145,25 +485,40 @@ def tts_task(self, text, params):
 def save_audio_with_format(audio_array, sampling_rate, output_file, fmt, quality=None):
     """
     Save audio in the requested format using soundfile (wav) or pydub (mp3, ogg).
+    Falls back to wav if ffmpeg/pydub conversion fails or is unavailable.
     """
+    output_dir = os.path.abspath(get_output_dir())
+    output_file_abs = os.path.abspath(output_file)
+    if not output_file_abs.startswith(output_dir):
+        output_file_abs = os.path.join(output_dir, os.path.basename(output_file))
+
     if fmt == 'wav':
-        sf.write(output_file, audio_array, sampling_rate)
+        sf.write(output_file_abs, audio_array, sampling_rate)
     else:
-        # Save as wav to temp, then convert
-        tmp_wav = output_file + '.tmp.wav'
-        sf.write(tmp_wav, audio_array, sampling_rate)
-        audio = AudioSegment.from_wav(tmp_wav)
-        params = {}
-        if quality == 'low':
-            params['bitrate'] = '64k'
-        elif quality == 'medium':
-            params['bitrate'] = '128k'
-        elif quality == 'high':
-            params['bitrate'] = '192k'
-        else:
-            params['bitrate'] = '128k'
-        audio.export(output_file, format=fmt, **params)
-        os.remove(tmp_wav)
+        tmp_wav = os.path.abspath(output_file_abs + '.tmp.wav')
+        if not tmp_wav.startswith(output_dir):
+            tmp_wav = os.path.join(output_dir, 'temp_audio.tmp.wav')
+        try:
+            sf.write(tmp_wav, audio_array, sampling_rate)
+            audio = AudioSegment.from_wav(tmp_wav)
+            params = {}
+            if quality == 'low':
+                params['bitrate'] = '64k'
+            elif quality == 'medium':
+                params['bitrate'] = '128k'
+            elif quality == 'high':
+                params['bitrate'] = '192k'
+            else:
+                params['bitrate'] = '128k'
+            audio.export(output_file_abs, format=fmt, **params)
+        except Exception:
+            sf.write(output_file_abs, audio_array, sampling_rate)
+        finally:
+            if os.path.exists(tmp_wav) and os.path.abspath(tmp_wav).startswith(output_dir):
+                try:
+                    os.remove(tmp_wav)
+                except OSError:
+                    pass
 
 def log_metadata(metadata):
     """
@@ -253,23 +608,199 @@ def unprocessable_entity(error):
 def internal_error(error):
     return jsonify({"error": "Internal Server Error", "message": str(error)}), 500
 
+@app.route('/tts/providers', methods=['GET'])
+def get_tts_providers():
+    return jsonify(TTS_PROVIDER_REGISTRY)
+
+@app.route('/voice-profiles', methods=['GET'])
+@jwt_required
+def list_voice_profiles():
+    provider = request.args.get('provider')
+    language = request.args.get('language')
+    is_default = request.args.get('is_default')
+    
+    profiles = load_voice_profiles()
+    user = getattr(g, 'user', None)
+    tenant = getattr(g, 'tenant', None)
+
+    filtered = []
+    for p in profiles:
+        p_user = p.get('user')
+        p_tenant = p.get('tenant')
+        if p_user in ('system', user) or p_tenant in ('global', tenant):
+            filtered.append(p)
+
+    if provider:
+        filtered = [p for p in filtered if p.get('provider') == provider]
+    if language:
+        filtered = [p for p in filtered if p.get('language') == language]
+    if is_default is not None:
+        val = is_default.lower() in ('true', '1')
+        filtered = [p for p in filtered if p.get('is_default') == val]
+
+    return jsonify(filtered)
+
+@app.route('/voice-profiles', methods=['POST'])
+@jwt_required
+def create_voice_profile():
+    data = request.get_json() or {}
+    is_valid, err = validate_voice_profile(data)
+    if not is_valid:
+        return jsonify({"error": "Validation error", "message": err}), 400
+
+    profiles = load_voice_profiles()
+    now_iso = datetime.utcnow().isoformat() + 'Z'
+    profile_id = str(uuid.uuid4())
+    
+    user = getattr(g, 'user', 'system')
+    tenant = getattr(g, 'tenant', 'global')
+
+    new_profile = {
+        "id": profile_id,
+        "name": data.get('name').strip(),
+        "description": data.get('description', ''),
+        "provider": data.get('provider'),
+        "voice_id": data.get('voice_id'),
+        "language": data.get('language'),
+        "gender": data.get('gender', 'unspecified'),
+        "is_default": bool(data.get('is_default', False)),
+        "user": user,
+        "tenant": tenant,
+        "settings": data.get('settings', {
+            "speaking_rate": 1.0,
+            "pitch": 0.0,
+            "volume": 100.0,
+            "output_format": "wav",
+            "sample_rate": 22050
+        }),
+        "provider_params": data.get('provider_params', {}),
+        "fallback_config": data.get('fallback_config', {
+            "fallback_profile_id": None,
+            "allow_provider_fallback": True,
+            "fallback_provider": "dummy" if is_test_mode() else "local_dia"
+        }),
+        "created_at": now_iso,
+        "updated_at": now_iso
+    }
+
+    if new_profile['is_default']:
+        for p in profiles:
+            if p.get('user') == user or p.get('tenant') == tenant:
+                p['is_default'] = False
+
+    profiles.append(new_profile)
+    save_voice_profiles(profiles)
+    return jsonify(new_profile), 201
+
+@app.route('/voice-profiles/<profile_id>', methods=['GET'])
+@jwt_required
+def get_voice_profile(profile_id):
+    profiles = load_voice_profiles()
+    user = getattr(g, 'user', None)
+    tenant = getattr(g, 'tenant', None)
+    for p in profiles:
+        if p.get('id') == profile_id:
+            if p.get('user') in ('system', user) or p.get('tenant') in ('global', tenant):
+                return jsonify(p)
+            return jsonify({"error": "Unauthorized access to profile"}), 403
+    return jsonify({"error": "Voice profile not found"}), 404
+
+@app.route('/voice-profiles/<profile_id>', methods=['PUT'])
+@jwt_required
+def update_voice_profile(profile_id):
+    data = request.get_json() or {}
+    profiles = load_voice_profiles()
+    user = getattr(g, 'user', None)
+    tenant = getattr(g, 'tenant', None)
+
+    target_index = -1
+    for i, p in enumerate(profiles):
+        if p.get('id') == profile_id:
+            target_index = i
+            break
+
+    if target_index == -1:
+        return jsonify({"error": "Voice profile not found"}), 404
+
+    target = profiles[target_index]
+    if target.get('user') == 'system':
+        return jsonify({"error": "Cannot update system default profiles"}), 400
+
+    if target.get('user') != user and target.get('tenant') != tenant:
+        return jsonify({"error": "Unauthorized access to profile"}), 403
+
+    merged = dict(target)
+    for k in ['name', 'description', 'provider', 'voice_id', 'language', 'gender', 'is_default', 'settings', 'provider_params', 'fallback_config']:
+        if k in data:
+            merged[k] = data[k]
+
+    is_valid, err = validate_voice_profile(merged)
+    if not is_valid:
+        return jsonify({"error": "Validation error", "message": err}), 400
+
+    merged['updated_at'] = datetime.utcnow().isoformat() + 'Z'
+    
+    if merged.get('is_default'):
+        for p in profiles:
+            if p.get('user') == user or p.get('tenant') == tenant:
+                p['is_default'] = False
+
+    profiles[target_index] = merged
+    save_voice_profiles(profiles)
+    return jsonify(merged)
+
+@app.route('/voice-profiles/<profile_id>', methods=['DELETE'])
+@jwt_required
+def delete_voice_profile(profile_id):
+    profiles = load_voice_profiles()
+    user = getattr(g, 'user', None)
+    tenant = getattr(g, 'tenant', None)
+
+    target = None
+    for p in profiles:
+        if p.get('id') == profile_id:
+            target = p
+            break
+
+    if not target:
+        return jsonify({"error": "Voice profile not found"}), 404
+
+    if target.get('user') == 'system':
+        return jsonify({"error": "Cannot delete system default profiles"}), 400
+
+    if target.get('user') != user and target.get('tenant') != tenant:
+        return jsonify({"error": "Unauthorized access to profile"}), 403
+
+    profiles = [p for p in profiles if p.get('id') != profile_id]
+    save_voice_profiles(profiles)
+    return jsonify({"message": "Voice profile deleted successfully"}), 200
+
 @app.route('/speak', methods=['POST'])
 @jwt_required
 def speak():
     # Get text input and config params from the request
-    data = request.get_json()
+    data = request.get_json() or {}
     text = data.get('text', '')
-    voice = data.get('voice', 'default')  # Placeholder
-    speed = data.get('speed', None)
-    pitch = data.get('pitch', None)
-    format_ = data.get('format', 'wav').lower()
-    quality = data.get('quality', 'medium')
+    voice_profile_id = data.get('voice_profile_id')
 
     if not text:
         return jsonify({"error": "Text input is required."}), 400
 
+    profile, exec_meta = resolve_voice_profile_and_fallback(
+        profile_id=voice_profile_id,
+        user=getattr(g, 'user', None),
+        tenant=getattr(g, 'tenant', None),
+        overrides=data
+    )
+
+    voice = exec_meta['merged_voice']
+    speed = exec_meta['merged_speed']
+    pitch = exec_meta['merged_pitch']
+    format_ = exec_meta['merged_format']
+    quality = exec_meta['merged_quality']
+
     # Log config params for future extension
-    print(f"[TTS CONFIG] voice={voice}, speed={speed}, pitch={pitch}, format={format_}, quality={quality}")
+    print(f"[TTS CONFIG] voice_profile_id={exec_meta['voice_profile_id']}, provider={exec_meta['provider_used']}, voice={voice}, speed={speed}, pitch={pitch}, format={format_}, quality={quality}")
 
     # Validate format
     supported_formats = {'wav', 'mp3', 'ogg'}
@@ -374,6 +905,11 @@ def speak():
         "quality": quality,
         "duration": duration_str,
         "s3_url": s3_url,
+        "voice_profile_id": exec_meta["voice_profile_id"],
+        "voice_profile_name": exec_meta["voice_profile_name"],
+        "provider_used": exec_meta["provider_used"],
+        "fallback_applied": exec_meta["fallback_applied"],
+        "warnings": exec_meta["warnings"]
     })
 
 # Path for job history
