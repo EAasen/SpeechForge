@@ -258,6 +258,34 @@ curl http://localhost:8000/job/<job_id>
 
 ---
 
+## 🧪 Running Tests
+
+The Python test suite uses [pytest](https://pytest.org/). Before running tests, install the dependencies:
+
+```bash
+pip install -r requirements.txt
+```
+
+**Important:** By default the app loads the Dia-1.6B model (~5–10 GB) on startup. Always run tests with the `dummy` backend to skip the model download:
+
+```bash
+TTS_BACKEND=dummy pytest test_app.py
+```
+
+A `conftest.py` at the project root automatically sets `TTS_BACKEND=dummy` when you run `pytest` without explicitly setting the variable, so the following also works:
+
+```bash
+pytest test_app.py
+```
+
+For the React frontend tests:
+
+```bash
+npm test
+```
+
+---
+
 ## Troubleshooting: TTS Generation Fails or Audio Output Issues
 
 If you encounter errors such as `TTS generation failed`, missing audio files, or issues with output formats (e.g., MP3/OGG not being produced), follow these steps to resolve common problems:
