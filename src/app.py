@@ -129,7 +129,7 @@ class GoogleTTS(BaseTTS):
         pitch = kwargs.get('pitch')
         if speed:
             audio_config_kwargs['speaking_rate'] = float(speed)
-        if pitch:
+        if pitch is not None:
             audio_config_kwargs['pitch'] = float(pitch)
         audio_config = texttospeech.AudioConfig(**audio_config_kwargs)
 
