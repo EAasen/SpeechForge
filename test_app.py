@@ -1,4 +1,6 @@
 import os
+import subprocess
+import sys
 import tempfile
 import pytest
 import json
@@ -27,6 +29,29 @@ def test_login_fail(client):
 def test_speak_requires_auth(client):
     resp = client.post('/speak', json={'text': 'Hello world'})
     assert resp.status_code == 401
+
+def test_startup_creates_outputs_directory(tmp_path):
+    repo_root = os.path.dirname(__file__)
+    env = os.environ.copy()
+    env["PYTHONPATH"] = os.pathsep.join(
+        p for p in [repo_root, env.get("PYTHONPATH")] if p
+    )
+    env["TTS_BACKEND"] = "dummy"
+    env["TESTING"] = "1"
+    subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            (
+                "import os; "
+                f"os.chdir({str(tmp_path)!r}); "
+                "import src.app; "
+                "assert os.path.isdir('outputs')"
+            ),
+        ],
+        check=True,
+        env=env,
+    )
 
 def test_speak_minimal(client):
     token = get_jwt_token(client, 'alice', 'password123')
